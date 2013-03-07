@@ -11,7 +11,7 @@ except ImportError:
 from lazysignup.decorators import USER_AGENT_BLACKLIST
 from lazysignup.exceptions import NotLazyError
 from lazysignup.utils import is_lazy_user
-from lazysignup.signals import converted
+from lazysignup.signals import converted, merge
 
 DEFAULT_BLACKLIST = (
     'slurp',
@@ -60,6 +60,15 @@ class LazyUserManager(models.Manager):
 
         converted.send(self, user=user)
         return user
+    
+    def merge(self, lazy_user, user):
+        """Merge the given lazy user into the already existing user"""
+        if not is_lazy_user(lazy_user):
+            raise NotLazyError('You cannot merge a non-lazy user')
+        
+        #send the merge before deleting the user, to be able to handle the situation properly
+        merge.send(self, lazy_user=lazy_user, user=user)
+        lazy_user.delete()
 
     def generate_username(self, user_class):
         """ Generate a new username for a user

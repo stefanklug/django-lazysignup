@@ -5,6 +5,7 @@ from django.views.generic.simple import direct_to_template
 
 urlpatterns = patterns('lazysignup.views',
     url(r'^$', 'convert', name='lazysignup_convert'),
+    url(r'^merge/$', 'merge', name='lazysignup_merge'),
     url(r'^done/$', direct_to_template, {
         'template': 'lazysignup/done.html',
         }, name='lazysignup_convert_done'),
