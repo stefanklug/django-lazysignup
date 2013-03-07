@@ -8,6 +8,7 @@ from django.http import HttpResponseBadRequest
 from django.template import RequestContext
 from django.utils.translation import ugettext_lazy as _
 from django.utils.module_loading import import_string
+from django.contrib.auth.forms import AuthenticationForm 
 
 from lazysignup.decorators import allow_lazy_user
 from lazysignup.exceptions import NotLazyError
@@ -70,6 +71,65 @@ def convert(request, form_class=None,
             return HttpResponseBadRequest(content=str(form.errors))
     else:
         form = form_class()
+
+    # If this is an ajax request, prepend the ajax template to the list of
+    # templates to be searched.
+    if request.is_ajax():
+        template_name = [ajax_template_name, template_name]
+    return render_to_response(template_name, {
+            'form': form,
+            'redirect_to': redirect_to
+        }, context_instance=RequestContext(request))
+
+   
+@allow_lazy_user
+def merge(request, form_class=AuthenticationForm,
+            redirect_field_name='redirect_to',
+            anonymous_redirect=settings.LOGIN_URL,
+            template_name='lazysignup/merge.html',
+            ajax_template_name='lazysignup/merge_ajax.html'):
+    """ Merge a temporary user with a real one
+    """
+    redirect_to = 'lazysignup_merge_done'
+
+    # If we've got an anonymous user, redirect to login
+    if request.user.is_anonymous():
+        return HttpResponseRedirect(anonymous_redirect)
+
+    if request.method == 'POST':
+        redirect_to = request.POST.get(redirect_field_name) or redirect_to
+        form = form_class(request, data=request.POST)
+        if form.is_valid():
+            try:
+                LazyUser.objects.merge(request.user, form.get_user())
+            except NotLazyError:
+                # If the user already has a usable password, return a Bad
+                # Request to an Ajax client, or just redirect back for a
+                # regular client.
+                if request.is_ajax():
+                    return HttpResponseBadRequest(
+                        content=_(u"Already converted."))
+                else:
+                    return redirect(redirect_to)
+
+            # login as the correct user
+            login(request, form.get_user())
+
+            # If we're being called via AJAX, then we just return a 200
+            # directly to the client. If not, then we redirect to a
+            # confirmation page or to redirect_to, if it's set.
+            if request.is_ajax():
+                return HttpResponse()
+            else:
+                return redirect(redirect_to)
+
+        # Invalid form, now check to see if is an ajax call
+        if request.is_ajax():
+            return HttpResponseBadRequest(content=str(form.errors))
+    else:
+        form = form_class()
+
+    request.session.set_test_cookie()
 
     # If this is an ajax request, prepend the ajax template to the list of
     # templates to be searched.
